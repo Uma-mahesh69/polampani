@@ -5,13 +5,20 @@
 // answered according to a hidden behaviour profile (workers here care more about distance
 // and wage than the model's priors assume). This demonstrates the online learning loop; in
 // production the same loop runs on real accepts, declines and no-shows.
+require('./runtime');
+
 if (require.main === module && process.argv.includes('--reset')) {
   const fs = require('fs');
   const { DB_PATH } = require('./config');
-  for (const f of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) fs.rmSync(f, { force: true });
+  try {
+    for (const f of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) fs.rmSync(f, { force: true });
+  } catch (e) {
+    console.error(`Could not delete ${DB_PATH} (${e.code}). Stop the running server first, then run npm run reset again.`);
+    process.exit(1);
+  }
 }
 
-const { get, run, tx, hydrateUser } = require('./db');
+const { get, run, tx, hydrateUser, kvSet } = require('./db');
 const { VILLAGE_MAP, VILLAGES, CROP_CALENDAR, WORK_TYPE_MAP, addDays, endDateOf, todayStr, parseYmd } = require('./catalog');
 
 function mulberry32(seed) {
@@ -235,6 +242,7 @@ function seed() {
     }
   }
   run('UPDATE notifications SET read = 1 WHERE user_id IN (SELECT id FROM users WHERE role = \'farmer\') AND id NOT IN (SELECT id FROM notifications ORDER BY id DESC LIMIT 6)');
+  kvSet('seeded_on', today);
   return { farmers: farmerIds.length, workers: WORKERS.length, jobs: historyCount + live.length };
 }
 

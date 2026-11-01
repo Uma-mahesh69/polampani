@@ -132,7 +132,7 @@ export async function signup(ctx) {
     role: pending.role || null, name: '', village: state.meta.villages[0].name, lat: null, lng: null, skills: [],
     daily_wage: 500, radius_km: 20, available_days: [1, 2, 3, 4, 5, 6], lang: state.lang, upi_id: '',
   };
-  let step = draft.role ? 1 : 0;
+  let step = 0;
   const steps = [t('About you'), t('Your village'), t('Your work')];
 
   const render = () => {

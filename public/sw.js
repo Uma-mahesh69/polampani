@@ -1,10 +1,10 @@
 // Service worker: cache the app shell so PolamPani opens on a flaky village connection.
 // API calls always go to the network; static assets are network-first with an offline fallback.
-const CACHE = 'polampani-v2';
+const CACHE = 'polampani-v3';
 const SHELL = [
   '/', '/index.html', '/css/app.css', '/js/main.js', '/js/core.js', '/js/i18n.js', '/js/te.js', '/js/ui.js', '/js/map.js',
   '/js/charts.js', '/js/views/public.js', '/js/views/shared.js', '/js/views/auth.js', '/js/views/farmer.js',
-  '/js/views/worker.js', '/js/views/account.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css',
+  '/js/views/worker.js', '/js/views/account.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css', '/vendor/fonts.css',
   '/icons/icon.svg', '/icons/icon-192.png', '/manifest.webmanifest',
 ];
 

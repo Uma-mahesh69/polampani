@@ -1,7 +1,11 @@
+require('./src/runtime');
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
+const compression = require('compression');
 const config = require('./src/config');
-require('./src/db');
+const { kvGet } = require('./src/db');
+const { todayStr } = require('./src/catalog');
 const jobs = require('./src/jobs');
 const api = require('./src/api');
 const { seedIfEmpty } = require('./src/seed');
@@ -9,11 +13,17 @@ const { seedIfEmpty } = require('./src/seed');
 if (process.env.SEED !== 'false') {
   const seeded = seedIfEmpty();
   if (seeded) console.log(`🌱 Seeded demo data: ${seeded.farmers} farmers, ${seeded.workers} workers, ${seeded.jobs} jobs`);
+  const seededOn = kvGet('seeded_on');
+  if (!seeded && seededOn && seededOn < todayStr()) {
+    console.log(`ℹ️  Demo data was created on ${seededOn}, so "today's" jobs are in the past. Stop the server and run \`npm run reset\` for fresh dates.`);
+  }
 }
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', 'loopback');
+// Behind a hosting proxy (Render, Railway, nginx) set TRUST_PROXY so rate limits see real client IPs.
+const trust = process.env.TRUST_PROXY;
+app.set('trust proxy', trust == null || trust === '' ? 'loopback' : /^\d+$/.test(trust) ? Number(trust) : trust === 'true' ? true : trust);
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -29,12 +39,23 @@ app.use((req, res, next) => {
   next();
 });
 
+// gzip everything except the live event stream (SSE must not be buffered).
+app.use(compression({ filter: (req, res) => !req.path.startsWith('/api/stream') && compression.filter(req, res) }));
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, uptime: Math.round(process.uptime()) }));
 app.use('/api', api);
 
 // Self-hosted vendor assets: the app works on a rural connection or fully offline (except map tiles).
+// One stylesheet for all self-hosted font faces (instead of six requests).
+const FONT_CSS = [
+  ['hind-guntur', ['400', '500', '600', '700'], '@fontsource/hind-guntur'],
+  ['big-shoulders', ['700', '800'], '@fontsource/big-shoulders-display'],
+].map(([mount, weights, pkg]) => weights.map((w) => fs.readFileSync(path.join(__dirname, 'node_modules', pkg, `${w}.css`), 'utf8')
+  .replace(/url\(\.\/files\//g, `url(/vendor/fonts/${mount}/files/`)).join('\n')).join('\n');
+app.get('/vendor/fonts.css', (_req, res) => {
+  res.type('text/css').set('Cache-Control', 'public, max-age=86400').send(FONT_CSS);
+});
 const vendor = (pkgPath) => express.static(path.join(__dirname, 'node_modules', pkgPath), { maxAge: '30d', immutable: true });
 app.use('/vendor/leaflet', vendor('leaflet/dist'));
 app.use('/vendor/fonts/hind-guntur', vendor('@fontsource/hind-guntur'));

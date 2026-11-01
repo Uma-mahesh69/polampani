@@ -46,7 +46,7 @@ export async function landing(ctx) {
         <p class="hero-live" id="live"></p>
       </div>
       <div class="try" aria-labelledby="try-label">
-        <label id="try-label" for="try-text">${t('Try it: type or speak a request')}</label>
+        <h2 class="try-title"><label id="try-label" for="try-text">${t('Try it: type or speak a request')}</label></h2>
         <div class="try-input">
           <textarea id="try-text" rows="3">${esc(EXAMPLES[0])}</textarea>
           <button class="btn btn-icon" data-act="tryMic" aria-label="${t('Speak')}">${icon('mic')}</button>

@@ -11,20 +11,28 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/400.css">
-  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/500.css">
-  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/600.css">
-  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/700.css">
-  <link rel="stylesheet" href="/vendor/fonts/big-shoulders/700.css">
-  <link rel="stylesheet" href="/vendor/fonts/big-shoulders/800.css">
-  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/vendor/fonts.css">
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="modulepreload" href="/js/main.js">
+  <link rel="modulepreload" href="/js/core.js">
+  <link rel="modulepreload" href="/js/i18n.js">
+  <link rel="modulepreload" href="/js/te.js">
+  <link rel="modulepreload" href="/js/ui.js">
+  <link rel="modulepreload" href="/js/map.js">
+  <link rel="modulepreload" href="/js/charts.js">
+  <link rel="modulepreload" href="/js/views/shared.js">
+  <link rel="modulepreload" href="/js/views/public.js">
+  <link rel="modulepreload" href="/js/views/auth.js">
+  <link rel="modulepreload" href="/js/views/farmer.js">
+  <link rel="modulepreload" href="/js/views/worker.js">
+  <link rel="modulepreload" href="/js/views/account.js">
 </head>
 <body>
   <div id="root"><div class="auth-wrap"><div class="skeleton" style="width:min(460px,90vw);height:280px"></div></div></div>
   <div id="toasts" aria-live="polite"></div>
   <noscript><p style="padding:24px">PolamPani needs JavaScript to run.</p></noscript>
-  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/vendor/leaflet/leaflet.js" defer></script>
   <script type="module" src="/js/main.js"></script>
 </body>
 </html>

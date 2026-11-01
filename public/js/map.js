@@ -12,7 +12,10 @@ export function createMap(el, { center = VIZAG, zoom = 11, interactive = true } 
     dragging: interactive,
     tap: interactive,
     attributionControl: true,
-  }).setView(center, zoom);
+    // Pages re-render on live updates; animated zooms on a map that is being removed throw in Leaflet.
+    zoomAnimation: false,
+    markerZoomAnimation: false,
+  }).setView(center, zoom, { animate: false });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '© OpenStreetMap',
@@ -21,7 +24,7 @@ export function createMap(el, { center = VIZAG, zoom = 11, interactive = true } 
   maps.add(map);
   map.on('unload', () => maps.delete(map));
   // Leaflet needs a size recalculation when its container appears after layout.
-  setTimeout(() => map.invalidateSize(), 60);
+  setTimeout(() => { if (maps.has(map)) map.invalidateSize(); }, 60);
   return map;
 }
 
@@ -48,6 +51,6 @@ export function dot(color = '#1F6B43') {
 
 export function fit(map, points, pad = 40) {
   if (!map || !points.length) return;
-  if (points.length === 1) { map.setView(points[0], 13); return; }
-  map.fitBounds(L.latLngBounds(points), { padding: [pad, pad], maxZoom: 14 });
+  if (points.length === 1) { map.setView(points[0], 13, { animate: false }); return; }
+  map.fitBounds(L.latLngBounds(points), { padding: [pad, pad], maxZoom: 14, animate: false });
 }

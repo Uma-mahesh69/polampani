@@ -514,6 +514,7 @@ dialog.modal::backdrop { background: rgba(9, 30, 20, .5); }
 @keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(47,168,101,0); } 100% { box-shadow: 0 0 0 0 rgba(47,168,101,0); } }
 
 .try { background: var(--field); border-radius: 26px; padding: 22px; color: #fff; box-shadow: var(--shadow-3); }
+.try-title { font-size: inherit; font-weight: inherit; }
 .try label { font-size: .9rem; color: #b7d3c1; font-weight: 600; display: block; margin-bottom: 8px; }
 .try-input { display: flex; gap: 8px; align-items: flex-start; }
 .try textarea { min-height: 84px; background: #0a2a1d; border-color: #2a5a43; color: #fff; font-size: 1.02rem; }

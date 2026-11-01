@@ -4,6 +4,8 @@
 
 Built for **Hacktoberfest Hack Day × AI for Vizag**, competing for **Best Open Source AI Project**.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Uma-mahesh69/polampani) &nbsp; `npm install && npm start` runs it locally in under a minute.
+
 ![Landing page: a farmer's Telugu sentence becomes a work chit live](docs/screenshots/01-landing.jpg)
 
 ## The problem
@@ -87,16 +89,40 @@ Open http://localhost:3000. Demo data is seeded on first start: 10 farmers, 60 l
 
 ```bash
 npm test        # 13 tests: language parsing, matching, and the full API lifecycle
-npm run reset   # wipe the database and reseed
+npm run reset   # wipe the database and reseed (stop the server first)
 npm run dev     # restart on file changes
 ```
 
-Docker:
+**Before a live demo:** stop the server, run `npm run reset`, then `npm start`. Seeded jobs are dated relative to the day you seed, so this gives you a job running *today* (with check-ins), jobs this week, and fresh alerts.
 
-```bash
-docker build -t polampani .
-docker run -p 3000:3000 -v polampani-data:/data polampani
-```
+### Deploy
+
+- **Render (one click):** use the button above. `render.yaml` sets Node 22, Indian time, a generated session secret and proxy-aware rate limits. The free plan sleeps when idle (the first visit takes about a minute) and its disk is temporary, so demo data reseeds on each restart.
+- **Docker:**
+
+  ```bash
+  docker build -t polampani .
+  docker run -p 3000:3000 -v polampani-data:/data polampani
+  ```
+- **Any Node 22 host:** `npm ci --omit=dev && npm start`. Behind a reverse proxy, set `TRUST_PROXY=1`.
+
+## Quality
+
+| Check | Result |
+|---|---|
+| Unit and API tests (`npm test`) | 13 / 13 passing: parser, matcher, full job lifecycle, permissions, validation |
+| Browser end-to-end (`npm run test:e2e`) | 52 / 52 passing, no console or server errors: signup by OTP, posting from Telugu text, **live alert to a second user**, accept, invite, cancel, check-in, attendance, rating, payment, profile, language switch, and every page at phone width in English and Telugu |
+| Lighthouse, mobile on simulated slow 4G | Landing **98** performance, **100** accessibility, **100** best practices, **100** SEO |
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `PolamPani needs Node.js 22.13 or newer` | Install the current LTS from nodejs.org |
+| `EADDRINUSE` | Another app uses port 3000: `PORT=3001 npm start` (Windows PowerShell: `$env:PORT=3001; npm start`) |
+| Map area is blank | Map tiles come from OpenStreetMap and need internet. Everything else works offline |
+| Today's job is in the past | Demo data is from an earlier day: stop the server, `npm run reset`, `npm start` |
+| Voice input does nothing | Speech recognition needs Chrome (desktop or Android) and microphone permission |
 
 ## Demo script (2 minutes)
 
@@ -122,6 +148,12 @@ See `.env.example`. Everything is optional.
 | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | Optional open-weights LLM for parsing | off, `llama3.2` |
 | `SMS_WEBHOOK_URL` | Receives `{to, name, message}` for every alert and login code | off |
 | `WEATHER` | Open-Meteo forecasts | `true` |
+| `TRUST_PROXY` | Set behind a hosting proxy so rate limits see real client IPs | `loopback` |
+| `TZ` | Timezone for "today" and job dates | `Asia/Kolkata` |
+
+## Pitch notes
+
+See [docs/PITCH.md](docs/PITCH.md) for a 2-minute pitch and answers to likely judge questions.
 
 ## Architecture
 
@@ -137,8 +169,9 @@ src/notifier.js      Server-Sent Events push + SMS webhook
 src/messages.js      Notification text in Telugu and English (SMS)
 src/catalog.js       Work types, facilities, crop calendar, villages, geo/date helpers
 src/db.js            SQLite schema and migrations (node:sqlite)
+src/runtime.js       Node version check, .env loading, IST timezone
 public/              No-build ES-module frontend, PWA service worker, self-hosted fonts and Leaflet
-test/                node:test suites
+test/                node:test suites; test/e2e/ has the Playwright browser suite
 ```
 
 The frontend uses no framework and has no build step. Typefaces are *Hind Guntur* (Telugu and Latin; named after the Andhra district) and *Big Shoulders Display* for figures. Each job is drawn as a **work chit** with a tear-off-calendar date block.

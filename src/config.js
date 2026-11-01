@@ -1,3 +1,5 @@
+require('./runtime');
+
 const path = require('path');
 
 const bool = (v, dflt) => (v == null || v === '' ? dflt : !['0', 'false', 'no', 'off'].includes(String(v).toLowerCase()));
