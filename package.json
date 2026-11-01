@@ -1,0 +1,27 @@
+{
+  "name": "polampani",
+  "version": "0.1.0",
+  "description": "Open-source AI platform that connects farmers with agricultural labourers: smart matching, instant job alerts, no fieldwork left undone.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "dev": "node --watch --disable-warning=ExperimentalWarning server.js",
+    "reset": "node --disable-warning=ExperimentalWarning src/seed.js --reset"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "keywords": [
+    "agriculture",
+    "farmers",
+    "labour",
+    "matching",
+    "ai",
+    "hacktoberfest",
+    "open-source"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}
