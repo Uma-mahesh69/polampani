@@ -1,12 +1,13 @@
 {
   "name": "polampani",
   "version": "0.1.0",
-  "description": "Open-source AI platform that connects farmers with agricultural labourers: smart matching, instant job alerts, no fieldwork left undone.",
+  "description": "Open-source AI platform that connects farmers with agricultural labourers: explainable matching, instant alerts in Telugu and English, no fieldwork left undone.",
   "main": "server.js",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "dev": "node --watch --disable-warning=ExperimentalWarning server.js",
-    "reset": "node --disable-warning=ExperimentalWarning src/seed.js --reset"
+    "reset": "node --disable-warning=ExperimentalWarning src/seed.js --reset",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
   },
   "engines": {
     "node": ">=22.13"
@@ -22,6 +23,13 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "express": "^5.3.0"
+    "@fontsource/big-shoulders-display": "^5.3.0",
+    "@fontsource/hind-guntur": "^5.3.0",
+    "express": "^5.3.0",
+    "leaflet": "^1.9.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Uma-mahesh69/polampani.git"
   }
 }

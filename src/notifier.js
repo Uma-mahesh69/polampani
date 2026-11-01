@@ -1,6 +1,8 @@
 // Notification hub: stores notifications, pushes them live over Server-Sent Events,
 // and forwards them to an SMS gateway (any HTTP webhook) for workers without smartphones.
 const { get, run } = require('./db');
+const config = require('./config');
+const { render } = require('./messages');
 
 const clients = new Map(); // userId -> Set<res>
 
@@ -27,29 +29,40 @@ function broadcast(payload) {
   for (const set of clients.values()) for (const res of set) send(res, payload);
 }
 
-function sms(userId, message) {
-  const u = get('SELECT name, phone FROM users WHERE id = ?', userId);
-  if (!u || !u.phone) return;
-  if (process.env.SMS_WEBHOOK_URL) {
-    fetch(process.env.SMS_WEBHOOK_URL, {
+const connectedCount = () => clients.size;
+
+function sms(user, text) {
+  if (!user?.phone) return;
+  if (config.SMS_WEBHOOK_URL) {
+    fetch(config.SMS_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: u.phone, name: u.name, message }),
+      body: JSON.stringify({ to: user.phone, name: user.name, message: text }),
     }).catch((e) => console.warn('[sms] webhook failed:', e.message));
-  } else if (process.env.LOG_SMS) {
-    console.log(`[sms] → ${u.phone} (${u.name}): ${message}`);
+  } else if (config.LOG_SMS) {
+    console.log(`[sms] → ${user.phone} (${user.name}): ${text}`);
   }
 }
 
-function notify(userId, { type, job_id = null, message, score = null, features = null }) {
+function sendSms(phone, text) {
+  sms({ phone, name: phone }, text);
+}
+
+function notify(userId, type, data = {}, { job_id = null, score = null, features = null, silent = false } = {}) {
+  const user = get('SELECT id, name, phone, lang FROM users WHERE id = ?', userId);
+  if (!user) return null;
   const r = run(
-    'INSERT INTO notifications (user_id, job_id, type, message, score, features) VALUES (?, ?, ?, ?, ?, ?)',
-    userId, job_id, type, message, score, features ? JSON.stringify(features) : null,
+    'INSERT INTO notifications (user_id, job_id, type, data, message, score, features) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    userId, job_id, type, JSON.stringify(data), render(type, data, 'en'), score,
+    features ? JSON.stringify(features) : null,
   );
   const n = get('SELECT * FROM notifications WHERE id = ?', Number(r.lastInsertRowid));
-  push(userId, { event: 'notification', notification: n });
-  sms(userId, message);
+  n.data = data;
+  if (!silent) {
+    push(userId, { event: 'notification', notification: n });
+    sms(user, render(type, data, user.lang));
+  }
   return n;
 }
 
-module.exports = { subscribe, push, broadcast, notify };
+module.exports = { subscribe, push, broadcast, notify, sendSms, connectedCount };

@@ -8,6 +8,7 @@
 // (e.g. Ollama running an open-weights model), its answer is merged in for harder phrasing.
 
 const { WORK_TYPES, WORK_TYPE_MAP, VILLAGES, ymd, todayStr } = require('./catalog');
+const config = require('./config');
 
 const KEYWORDS = {
   paddy_transplanting: {
@@ -39,6 +40,7 @@ const NUMBER_WORDS = {
   aaruguru: 6, aaru: 6, eduguru: 7, enimidi: 8, tommidi: 9, padi: 10, padimandi: 10, iravai: 20,
   'ఒకరు': 1, 'ఇద్దరు': 2, 'ముగ్గురు': 3, 'నలుగురు': 4, 'ఐదుగురు': 5, 'ఆరుగురు': 6, 'ఏడుగురు': 7,
   'ఎనిమిది': 8, 'తొమ్మిది': 9, 'పది': 10, 'పదిమంది': 10, 'పదిహేను': 15, 'ఇరవై': 20,
+  'రెండు': 2, 'మూడు': 3, 'నాలుగు': 4, 'ఐదు': 5, 'ఆరు': 6, 'ఏడు': 7, 'వారం': 7,
   teen: 3, paanch: 5, chhe: 6, saat: 7, aath: 8,
 };
 
@@ -76,7 +78,7 @@ function detectWorkers(text) {
   const t = normaliseNumbers(text);
   let m = t.match(new RegExp(`(\\d{1,3})\\s*(?:[^\\s\\d]+\\s+)?${WORKER_WORDS}`, 'i'));
   if (!m) m = t.match(/\b(\d{1,3})\s*(?:kavali|kaavali|కావాలి|chahiye|चाहिए|needed|required)/i);
-  if (!m) m = t.match(/(?:need|want|require|kavali|kaavali|కావాలి|chahiye|for)\s+(\d{1,3})\b(?!\s*(?:rs|₹|rupees|\/-|am|pm|km|th|st|nd|rd))/i);
+  if (!m) m = t.match(/(?:need|want|require|kavali|kaavali|కావాలి|chahiye|for)\s+(\d{1,3})\b(?!\s*(?:rs|₹|rupees|\/-|am|pm|km|th|st|nd|rd|days?|rojulu|రోజు|din))/i);
   const n = m ? Number(m[1]) : null;
   return n && n > 0 && n <= 200 ? n : null;
 }
@@ -159,6 +161,30 @@ function detectTime(lower) {
   return null;
 }
 
+const DAY_WORDS = '(?:days?|rojulu|roju|రోజులు|రోజుల|రోజు|din|दिन)';
+
+function detectDuration(text) {
+  const t = normaliseNumbers(text).toLowerCase();
+  const m = t.match(new RegExp(`(\\d{1,2})\\s*${DAY_WORDS}`, 'i'));
+  if (m) {
+    const n = Number(m[1]);
+    return n >= 1 && n <= 30 ? n : null;
+  }
+  if (/\b(?:a|one) week\b|వారం రోజులు/.test(t)) return 7;
+  return null;
+}
+
+const FACILITY_PATTERNS = {
+  meals: /lunch|meals?\b|food (?:will be )?provided|bhojanam|భోజనం|అన్నం|khana|खाना/,
+  tea: /\btea\b|chai|snacks|tiffin|టీ|టిఫిన్/,
+  transport: /pick ?-?up|transport|vehicle|vahanam|వాహనం|tractor will (?:come|pick)/,
+  tools: /tools? (?:provided|given|will be given)|పనిముట్లు ఇస్తా/,
+};
+
+function detectFacilities(lower) {
+  return Object.entries(FACILITY_PATTERNS).filter(([, re]) => re.test(lower)).map(([id]) => id);
+}
+
 function detectVillage(lower) {
   for (const v of VILLAGES) {
     const names = [v.name.toLowerCase(), v.te, ...(v.aliases || [])];
@@ -176,29 +202,31 @@ function parseWithRules(text, now = new Date()) {
     wage: detectWage(text),
     date: detectDate(lower, now),
     start_time: detectTime(lower),
+    duration_days: detectDuration(text),
     village: village ? village.name : null,
+    facilities: detectFacilities(lower),
   };
 }
 
 async function parseWithLLM(text) {
-  const base = process.env.LLM_BASE_URL;
+  const base = config.LLM_BASE_URL;
   if (!base) return null;
-  const model = process.env.LLM_MODEL || 'llama3.2';
+  const model = config.LLM_MODEL;
   const prompt = `Today is ${todayStr()}. Extract the farm labour request below into JSON with keys:
 work_type (one of: ${WORK_TYPES.map((w) => w.id).join(', ')}), workers_needed (integer), wage (rupees per day, integer),
-date (YYYY-MM-DD), start_time (HH:MM, 24h), village (one of: ${VILLAGES.map((v) => v.name).join(', ')}).
+date (YYYY-MM-DD), start_time (HH:MM, 24h), duration_days (integer), village (one of: ${VILLAGES.map((v) => v.name).join(', ')}).
 Use null for anything not mentioned. The text may be English, Telugu or Hindi. Reply with JSON only.
 
 Request: """${text}"""`;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), Number(process.env.LLM_TIMEOUT_MS || 8000));
+  const timer = setTimeout(() => ctrl.abort(), config.LLM_TIMEOUT_MS);
   try {
     const res = await fetch(`${base.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       signal: ctrl.signal,
       headers: {
         'Content-Type': 'application/json',
-        ...(process.env.LLM_API_KEY ? { Authorization: `Bearer ${process.env.LLM_API_KEY}` } : {}),
+        ...(config.LLM_API_KEY ? { Authorization: `Bearer ${config.LLM_API_KEY}` } : {}),
       },
       body: JSON.stringify({
         model,
@@ -217,6 +245,7 @@ Request: """${text}"""`;
     if (+json.wage >= 150 && +json.wage <= 3000) out.wage = Math.round(+json.wage);
     if (/^\d{4}-\d{2}-\d{2}$/.test(json.date || '')) out.date = json.date;
     if (/^\d{2}:\d{2}$/.test(json.start_time || '')) out.start_time = json.start_time;
+    if (Number.isInteger(+json.duration_days) && +json.duration_days >= 1 && +json.duration_days <= 30) out.duration_days = +json.duration_days;
     const v = VILLAGES.find((x) => x.name.toLowerCase() === String(json.village || '').toLowerCase());
     if (v) out.village = v.name;
     return out;
@@ -233,14 +262,17 @@ async function parseJobText(text) {
   const merged = { ...rules };
   if (llm) for (const [k, v] of Object.entries(llm)) if (v != null) merged[k] = v;
   const v = VILLAGES.find((x) => x.name === merged.village);
-  const found = Object.entries(merged).filter(([, val]) => val != null).map(([k]) => k);
+  const found = ['work_type', 'workers_needed', 'wage', 'date', 'start_time', 'village', 'duration_days']
+    .filter((k) => merged[k] != null);
+  if (merged.facilities?.length) found.push('facilities');
   return {
     ...merged,
     lat: v ? v.lat : null,
     lng: v ? v.lng : null,
     found,
-    confidence: found.length / 6,
-    source: llm ? `rules + LLM (${process.env.LLM_MODEL || 'llama3.2'})` : 'on-device rules engine',
+    confidence: Math.min(1, found.length / 6),
+    source: llm ? 'llm' : 'rules',
+    model: llm ? config.LLM_MODEL : null,
   };
 }
 

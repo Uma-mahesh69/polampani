@@ -1,121 +1,129 @@
 // AI matching engine.
 //
-// For every (worker, job) pair we compute six interpretable features, then an online
-// logistic-regression model turns them into the probability that the worker will accept
-// and show up. The model starts from expert priors and is updated with SGD every time a
-// worker accepts or declines an alert, so ranking keeps adapting to local behaviour.
-// Every score ships with human-readable reasons, so farmers and workers can see *why*.
+// For every (worker, job) pair we compute seven interpretable features. An online
+// logistic-regression model turns them into the probability that the worker accepts and
+// shows up. It starts from expert priors and takes one SGD step on every accept, decline
+// and no-show, so the ranking adapts to how people in this area actually behave.
+// Each score ships with structured reasons so the UI can explain *why* in Telugu or English.
 
-const { all, get, run, hydrateUser } = require('./db');
+const { all, get, hydrateUser, parseJSON, kvGet, kvSet } = require('./db');
 const {
-  WORK_TYPE_MAP, DAYS, skillMatch, haversineKm, weekdayOf, fmtDate, todayStr, round1,
+  WORK_TYPE_MAP, skillMatch, haversineKm, weekdayOf, todayStr, round1, datesBetween,
 } = require('./catalog');
 
-const FEATURES = ['proximity', 'skill', 'availability', 'wage', 'reliability', 'experience'];
-const LABELS = {
-  proximity: 'Distance to field',
-  skill: 'Skill match',
-  availability: 'Free on that day',
-  wage: 'Wage fairness',
-  reliability: 'Rating',
-  experience: 'Experience',
-};
+const FEATURES = ['proximity', 'skill', 'availability', 'wage', 'reliability', 'experience', 'rapport'];
 const PRIOR = {
-  weights: { proximity: 2.8, skill: 2.4, availability: 2.0, wage: 1.6, reliability: 0.9, experience: 0.6 },
-  bias: -6.5,
+  weights: { proximity: 2.8, skill: 2.4, availability: 2.0, wage: 1.6, reliability: 1.0, experience: 0.6, rapport: 0.8 },
+  bias: -7.0,
 };
-const LEARNING_RATE = 0.25;
+const LEARNING_RATE = 0.2;
+const RECENT_WINDOW = 100;
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 
+let cached = null;
 function loadModel() {
-  const row = get("SELECT value FROM kv WHERE key = 'model'");
-  if (row) return JSON.parse(row.value);
-  return { ...clone(PRIOR), samples: 0, correct: 0, positives: 0 };
+  if (cached) return cached;
+  const raw = kvGet('model');
+  const m = raw ? JSON.parse(raw) : null;
+  cached = m && m.version === 2 ? m : { version: 2, ...clone(PRIOR), samples: 0, correct: 0, positives: 0, recent: [] };
+  return cached;
 }
-
 function saveModel(m) {
-  run(
-    "INSERT INTO kv (key, value) VALUES ('model', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    JSON.stringify(m),
-  );
+  cached = m;
+  kvSet('model', JSON.stringify(m));
+}
+function resetModel() {
+  cached = null;
+  kvSet('model', JSON.stringify({ version: 2, ...clone(PRIOR), samples: 0, correct: 0, positives: 0, recent: [] }));
+  cached = null;
 }
 
-function features(worker, job) {
+// history: Map(worker_id -> { count, avg }) of past completed work with this job's farmer.
+function features(worker, job, history = null) {
   const distance = haversineKm(worker.lat, worker.lng, job.lat, job.lng);
   const skill = skillMatch(worker.skills, job.work_type);
-  const wd = weekdayOf(job.date);
-  const availDay = (worker.available_days || []).includes(wd);
+  const days = datesBetween(job.date, job.end_date || job.date);
+  const freeDays = days.filter((d) => (worker.available_days || []).includes(weekdayOf(d))).length;
   const wageRatio = job.wage / Math.max(1, worker.daily_wage);
+  const showRate = ((worker.jobs_done || 0) + 2) / ((worker.jobs_done || 0) + (worker.no_shows || 0) + 2);
+  const past = history?.get(worker.id);
   const x = {
     proximity: Math.exp(-distance / 10),
     skill: skill.value,
-    availability: availDay ? 1 : 0,
+    availability: days.length ? freeDays / days.length : 0,
     wage: wageRatio >= 1 ? 1 : Math.max(0, 1 - (1 - wageRatio) * 3),
-    reliability: (worker.rating || 0) / 5,
+    reliability: 0.6 * ((worker.rating || 0) / 5) + 0.4 * showRate,
     experience: Math.min(1, Math.log1p(worker.jobs_done || 0) / Math.log1p(60)),
+    rapport: past ? (past.avg >= 4 || past.count >= 2 ? 1 : 0.6) : 0,
   };
-  return { x, distance, skill, availDay, wd };
+  return { x, distance, skill, freeDays, totalDays: days.length, wd: weekdayOf(job.date), past, showRate };
 }
 
 function score(x, model = loadModel()) {
   let z = model.bias;
-  for (const f of FEATURES) z += model.weights[f] * x[f];
+  for (const f of FEATURES) z += model.weights[f] * (x[f] ?? 0);
   return sigmoid(z);
 }
 
-function explain(worker, job, f, perspective = 'farmer') {
-  const work = WORK_TYPE_MAP[job.work_type];
-  const day = DAYS[f.wd];
-  const you = perspective === 'worker';
-  const reasons = [];
-  reasons.push({ ok: f.distance <= worker.radius_km, text: `📍 ${round1(f.distance)} km${you ? ' from you' : ' away'}` });
-  if (f.skill.value === 1) {
-    reasons.push({ ok: true, text: you ? '🛠️ Matches your skill' : `🛠️ Skilled in ${work.en.toLowerCase()}` });
-  } else if (f.skill.value >= 0.5) {
-    reasons.push({ ok: true, text: `🛠️ Related skill: ${WORK_TYPE_MAP[f.skill.best].en.toLowerCase()}` });
-  } else {
-    reasons.push({ ok: false, text: '🛠️ New type of work' });
-  }
-  reasons.push(f.availDay
-    ? { ok: true, text: you ? `📅 ${day} is your free day` : `📅 Usually free on ${day}` }
-    : { ok: false, text: you ? `📅 ${day} is not your usual day` : `📅 Not usually free on ${day}` });
-  const diff = job.wage - worker.daily_wage;
-  if (you) {
-    reasons.push({ ok: diff >= 0, text: diff >= 0 ? `💰 ₹${diff} above your ask` : `💰 ₹${-diff} below your ask` });
-  } else {
-    reasons.push({ ok: diff >= 0, text: `💰 Asks ₹${worker.daily_wage}/day` });
-    reasons.push({ ok: worker.rating >= 4, text: `⭐ ${worker.rating.toFixed(1)} · ${worker.jobs_done} jobs done` });
-  }
-  return reasons;
+// Structured, language-neutral reasons. The client renders them per viewer and language.
+function explain(worker, job, f) {
+  const r = [];
+  r.push({ code: 'distance', ok: f.distance <= worker.radius_km, km: round1(f.distance) });
+  if (f.skill.value === 1) r.push({ code: 'skill_exact', ok: true, skill: job.work_type });
+  else if (f.skill.value >= 0.5) r.push({ code: 'skill_related', ok: true, skill: f.skill.best });
+  else r.push({ code: 'skill_new', ok: false, skill: job.work_type });
+  if (f.freeDays === f.totalDays) r.push({ code: 'days_free', ok: true, day: f.wd, days: f.totalDays });
+  else if (f.freeDays > 0) r.push({ code: 'days_partial', ok: false, free: f.freeDays, days: f.totalDays });
+  else r.push({ code: 'days_busy', ok: false, day: f.wd, days: f.totalDays });
+  r.push({ code: job.wage >= worker.daily_wage ? 'wage_ok' : 'wage_low', ok: job.wage >= worker.daily_wage, diff: job.wage - worker.daily_wage, ask: worker.daily_wage });
+  r.push({ code: 'reliability', ok: worker.rating >= 4 && f.showRate >= 0.85, rating: round1(worker.rating), jobs: worker.jobs_done, show: Math.round(f.showRate * 100) });
+  if (f.past) r.push({ code: 'rapport', ok: true, count: f.past.count });
+  return r;
 }
 
 const publicWorker = (w) => ({
   id: w.id, name: w.name, village: w.village, lat: w.lat, lng: w.lng, skills: w.skills,
-  rating: w.rating, jobs_done: w.jobs_done, daily_wage: w.daily_wage, radius_km: w.radius_km,
+  rating: w.rating, rating_count: w.rating_count, jobs_done: w.jobs_done, no_shows: w.no_shows,
+  daily_wage: w.daily_wage, radius_km: w.radius_km, verified: w.verified,
 });
 
+function farmerHistory(farmerId) {
+  return new Map(all(
+    `SELECT a.worker_id, COUNT(*) AS count, AVG(COALESCE(a.farmer_rating, 4)) AS avg
+     FROM assignments a JOIN jobs j ON j.id = a.job_id
+     WHERE j.farmer_id = ? AND a.status = 'completed' GROUP BY a.worker_id`,
+    farmerId,
+  ).map((r) => [r.worker_id, { count: r.count, avg: r.avg }]));
+}
+
+// Workers already booked on any day that overlaps this job.
+function bookedWorkers(job) {
+  return new Set(all(
+    `SELECT a.worker_id FROM assignments a JOIN jobs j ON j.id = a.job_id
+     WHERE a.status = 'accepted' AND j.date <= ? AND j.end_date >= ? AND j.id <> ?`,
+    job.end_date || job.date, job.date, job.id ?? -1,
+  ).map((r) => r.worker_id));
+}
+
 // Rank available workers for a job. radiusMult widens each worker's travel radius
-// (used by escalation rounds when a job is not filling up).
+// (escalation rounds use it when a job is not filling up).
 function rankWorkersForJob(job, { radiusMult = 1, excludeIds = new Set() } = {}) {
   const workers = all("SELECT * FROM users WHERE role = 'worker' AND available = 1").map(hydrateUser);
-  const booked = new Set(all(
-    `SELECT a.worker_id FROM assignments a JOIN jobs j ON j.id = a.job_id
-     WHERE a.status = 'accepted' AND j.date = ? AND j.id <> ?`,
-    job.date, job.id ?? -1,
-  ).map((r) => r.worker_id));
+  const booked = bookedWorkers(job);
+  const history = job.farmer_id ? farmerHistory(job.farmer_id) : null;
   const model = loadModel();
   return workers
     .filter((w) => !excludeIds.has(w.id) && !booked.has(w.id))
     .map((w) => {
-      const f = features(w, job);
+      const f = features(w, job, history);
       return {
         worker: publicWorker(w),
         distance: round1(f.distance),
         score: score(f.x, model),
         x: f.x,
-        reasons: explain(w, job, f, 'farmer'),
+        reasons: explain(w, job, f),
         inRange: f.distance <= w.radius_km * radiusMult,
       };
     })
@@ -123,57 +131,93 @@ function rankWorkersForJob(job, { radiusMult = 1, excludeIds = new Set() } = {})
     .sort((a, b) => b.score - a.score);
 }
 
-// Rank open jobs for a worker's personalised feed.
-function rankJobsForWorker(worker) {
+// Personalised, filterable feed of open jobs for a worker.
+function rankJobsForWorker(worker, { work_type, max_km, min_wage, sort = 'match' } = {}) {
   const jobs = all(
-    `SELECT j.*, u.name AS farmer_name FROM jobs j JOIN users u ON u.id = j.farmer_id
-     WHERE j.status = 'open' AND j.date >= ?`,
+    `SELECT j.*, u.name AS farmer_name, u.rating AS farmer_rating, u.village AS farmer_village
+     FROM jobs j JOIN users u ON u.id = j.farmer_id
+     WHERE j.status = 'open' AND j.end_date >= ?`,
     todayStr(),
   );
   const booked = all(
-    `SELECT j.id, j.date FROM assignments a JOIN jobs j ON j.id = a.job_id
+    `SELECT j.id, j.date, j.end_date FROM assignments a JOIN jobs j ON j.id = a.job_id
      WHERE a.worker_id = ? AND a.status = 'accepted'`,
     worker.id,
   );
   const bookedIds = new Set(booked.map((b) => b.id));
-  const bookedDates = new Set(booked.map((b) => b.date));
+  const clashes = (j) => booked.some((b) => b.date <= j.end_date && b.end_date >= j.date);
   const notifs = new Map(all(
-    "SELECT job_id, responded FROM notifications WHERE user_id = ? AND type = 'job_match'",
+    "SELECT job_id, responded, type FROM notifications WHERE user_id = ? AND type IN ('job_match', 'invite')",
     worker.id,
-  ).map((n) => [n.job_id, n.responded]));
+  ).map((n) => [n.job_id, n]));
+  const counts = new Map(all(
+    "SELECT job_id, COUNT(*) AS c FROM assignments WHERE status = 'accepted' GROUP BY job_id",
+  ).map((r) => [r.job_id, r.c]));
+  const histories = new Map();
   const model = loadModel();
-  return jobs
-    .filter((j) => !bookedIds.has(j.id) && !bookedDates.has(j.date) && notifs.get(j.id) !== 'declined')
+
+  let list = jobs
+    .filter((j) => !bookedIds.has(j.id) && !clashes(j) && notifs.get(j.id)?.responded !== 'declined')
     .map((j) => {
-      const f = features(worker, j);
-      const acc = get("SELECT COUNT(*) AS c FROM assignments WHERE job_id = ? AND status = 'accepted'", j.id).c;
+      if (!histories.has(j.farmer_id)) histories.set(j.farmer_id, farmerHistory(j.farmer_id));
+      const f = features(worker, j, histories.get(j.farmer_id));
+      const acc = counts.get(j.id) || 0;
       return {
-        job: {
-          ...j,
-          work: WORK_TYPE_MAP[j.work_type],
-          date_label: fmtDate(j.date),
-          accepted_count: acc,
-          spots_left: Math.max(0, j.workers_needed - acc),
-        },
+        job: { ...decorateJob(j), accepted_count: acc, spots_left: Math.max(0, j.workers_needed - acc) },
         distance: round1(f.distance),
         score: score(f.x, model),
-        reasons: explain(worker, j, f, 'worker'),
+        reasons: explain(worker, j, f),
         alerted: notifs.has(j.id),
+        invited: notifs.get(j.id)?.type === 'invite',
       };
     })
-    .filter((r) => r.distance <= Math.max(worker.radius_km * 3, 30))
-    .sort((a, b) => b.score - a.score);
+    .filter((r) => r.distance <= Math.max(worker.radius_km * 3, 30));
+
+  if (work_type && WORK_TYPE_MAP[work_type]) list = list.filter((r) => r.job.work_type === work_type);
+  if (Number(max_km) > 0) list = list.filter((r) => r.distance <= Number(max_km));
+  if (Number(min_wage) > 0) list = list.filter((r) => r.job.wage >= Number(min_wage));
+  const sorters = {
+    match: (a, b) => b.score - a.score,
+    wage: (a, b) => b.job.wage - a.job.wage || b.score - a.score,
+    distance: (a, b) => a.distance - b.distance,
+    date: (a, b) => a.job.date.localeCompare(b.job.date) || b.score - a.score,
+  };
+  return list.sort(sorters[sort] || sorters.match);
 }
 
-// One SGD step on the logistic loss. y = 1 (accepted) or 0 (declined).
+function decorateJob(j) {
+  return { ...j, facilities: parseJSON(j.facilities, []), work: WORK_TYPE_MAP[j.work_type] };
+}
+
+// Probability that at least `need` of the alerted workers accept (Poisson-binomial).
+function fillForecast(probabilities, need) {
+  let dp = [1];
+  for (const p of probabilities) {
+    const next = new Array(dp.length + 1).fill(0);
+    for (let k = 0; k < dp.length; k += 1) {
+      next[k] += dp[k] * (1 - p);
+      next[k + 1] += dp[k] * p;
+    }
+    dp = next;
+  }
+  const atLeast = dp.slice(Math.max(0, need)).reduce((s, v) => s + v, 0);
+  return {
+    expected: Math.round(probabilities.reduce((s, p) => s + p, 0) * 10) / 10,
+    probability: Math.max(0, Math.min(1, atLeast)),
+  };
+}
+
+// One SGD step on the logistic loss. y = 1 (accepted) or 0 (declined / no-show).
 function learn(x, y) {
-  const m = loadModel();
+  const m = clone(loadModel());
   const p = score(x, m);
+  const hit = (p >= 0.5) === (y === 1) ? 1 : 0;
   m.samples += 1;
-  if ((p >= 0.5) === (y === 1)) m.correct += 1;
+  m.correct += hit;
   if (y === 1) m.positives += 1;
+  m.recent = [...(m.recent || []), hit].slice(-RECENT_WINDOW);
   const err = y - p;
-  for (const f of FEATURES) m.weights[f] = Math.max(0, m.weights[f] + LEARNING_RATE * err * x[f]);
+  for (const f of FEATURES) m.weights[f] = Math.max(0, m.weights[f] + LEARNING_RATE * err * (x[f] ?? 0));
   m.bias += LEARNING_RATE * err;
   saveModel(m);
   return { p, y };
@@ -183,15 +227,16 @@ function modelInfo() {
   const m = loadModel();
   const total = FEATURES.reduce((s, f) => s + m.weights[f], 0) || 1;
   const priorTotal = FEATURES.reduce((s, f) => s + PRIOR.weights[f], 0);
+  const recent = m.recent || [];
   return {
-    type: 'Online logistic regression (explainable, runs locally)',
+    type: 'Online logistic regression',
     samples: m.samples,
-    accuracy: m.samples ? m.correct / m.samples : null,
     positives: m.positives,
-    bias: m.bias,
+    accuracy: m.samples ? m.correct / m.samples : null,
+    recent_accuracy: recent.length >= 10 ? recent.reduce((s, v) => s + v, 0) / recent.length : null,
+    recent_window: recent.length,
     features: FEATURES.map((f) => ({
       key: f,
-      label: LABELS[f],
       weight: +m.weights[f].toFixed(3),
       prior: PRIOR.weights[f],
       importance: m.weights[f] / total,
@@ -200,49 +245,7 @@ function modelInfo() {
   };
 }
 
-function quantile(sorted, q) {
-  if (!sorted.length) return null;
-  const pos = (sorted.length - 1) * q;
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
-}
-
-// Fair-wage suggestion + labour supply forecast for a planned job.
-function wageInsight({ work_type, lat, lng, date, workers_needed = 1 }) {
-  const workers = all("SELECT * FROM users WHERE role = 'worker'").map(hydrateUser);
-  const near = workers.filter((w) => haversineKm(w.lat, w.lng, lat, lng) <= 25
-    && skillMatch(w.skills, work_type).value >= 0.55);
-  const wages = near.map((w) => w.daily_wage).sort((a, b) => a - b);
-  const median = quantile(wages, 0.5) ?? 500;
-  const p70 = quantile(wages, 0.7) ?? 520;
-  const wd = date ? weekdayOf(date) : null;
-  const booked = date ? new Set(all(
-    `SELECT a.worker_id FROM assignments a JOIN jobs j ON j.id = a.job_id
-     WHERE a.status = 'accepted' AND j.date = ?`, date,
-  ).map((r) => r.worker_id)) : new Set();
-  const supply = near.filter((w) => w.available && !booked.has(w.id)
-    && (wd == null || w.available_days.includes(wd))).length;
-  const need = Math.max(1, Number(workers_needed) || 1);
-  const risk = supply >= need * 4 ? 'low' : supply >= need * 2 ? 'medium' : 'high';
-  const base = risk === 'high' ? p70 * 1.1 : risk === 'medium' ? p70 : median;
-  const suggested = Math.round(base / 10) * 10;
-  const tips = {
-    low: 'Plenty of skilled workers nearby. A fair wage will fill this fast.',
-    medium: 'Supply is moderate. Offering the suggested wage improves acceptance.',
-    high: `Few skilled workers are free that day. Offer ≥ ₹${suggested} and post early. We will widen the search radius automatically.`,
-  };
-  return {
-    suggested_wage: suggested,
-    median_wage: Math.round(median),
-    supply,
-    skilled_nearby: near.length,
-    risk,
-    tip: tips[risk],
-  };
-}
-
 module.exports = {
-  FEATURES, PRIOR, loadModel, features, score, explain, learn, modelInfo,
-  rankWorkersForJob, rankJobsForWorker, wageInsight, publicWorker,
+  FEATURES, PRIOR, loadModel, resetModel, features, score, explain, learn, modelInfo, fillForecast,
+  rankWorkersForJob, rankJobsForWorker, publicWorker, farmerHistory, bookedWorkers, decorateJob,
 };

@@ -2,37 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PolamPani: fieldwork, filled on time</title>
-  <meta name="description" content="Open-source AI platform connecting farmers with agricultural labourers nearby.">
-  <meta name="theme-color" content="#2e6b34">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PolamPani: farm work, filled on time</title>
+  <meta name="description" content="PolamPani connects farmers with agricultural labourers nearby. Post work by voice in Telugu or English and open-source AI alerts the best-matched workers in seconds.">
+  <meta name="theme-color" content="#0d3324">
+  <meta property="og:title" content="PolamPani: farm work, filled on time">
+  <meta property="og:description" content="Open-source AI that connects farmers with agricultural labourers nearby.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/400.css">
+  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/500.css">
+  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/600.css">
+  <link rel="stylesheet" href="/vendor/fonts/hind-guntur/700.css">
+  <link rel="stylesheet" href="/vendor/fonts/big-shoulders/700.css">
+  <link rel="stylesheet" href="/vendor/fonts/big-shoulders/800.css">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-  <header class="top">
-    <button class="brand" data-act="home" title="Home">
-      <span class="logo">🌾</span>
-      <span><b>Polam</b>Pani <small class="te">పొలం పని</small></span>
-    </button>
-    <div class="top-right">
-      <button class="btn ghost small" data-act="lang" id="langBtn">తెలుగు</button>
-      <span id="who"></span>
-    </div>
-  </header>
-  <div id="stats" class="stats"></div>
-  <main id="app"><p class="muted pad">Loading…</p></main>
+  <div id="root"><div class="auth-wrap"><div class="skeleton" style="width:min(460px,90vw);height:280px"></div></div></div>
   <div id="toasts" aria-live="polite"></div>
-  <dialog id="joinDlg"></dialog>
-  <footer>
-    🌱 Open source (MIT) · Built at Hacktoberfest Hack Day × AI for Vizag ·
-    Matching model runs locally. No farmer or worker data leaves your server.
-  </footer>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/app.js"></script>
+  <noscript><p style="padding:24px">PolamPani needs JavaScript to run.</p></noscript>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="/js/main.js"></script>
 </body>
 </html>
