@@ -26,9 +26,12 @@ export function publicHeader() {
 }
 
 const EXAMPLES = [
-  'రేపు ఉదయం 6 గంటలకి అనకాపల్లిలో వరి కోతలకు 8 మంది కావాలి, కూలి 600, భోజనం ఉంటుంది',
-  'Need 5 people for sugarcane cutting in Chodavaram on Saturday for 2 days, 650 per day',
-  'ellundi sabbavaram lo kalupu pani ki naluguru kavali, rs 450',
+  { label: 'Telugu', text: 'రేపు ఉదయం 6 గంటలకి అనకాపల్లిలో వరి కోతలకు 8 మంది కావాలి, కూలి 600, భోజనం ఉంటుంది' },
+  { label: 'Hindi', text: 'कल सुबह 6 बजे अनकापल्ली में 8 मजदूर धान कटाई के लिए चाहिए, 600 रुपये, खाना मिलेगा' },
+  { label: 'Tamil', text: 'நாளை காலை 6 மணிக்கு நடவு வேலைக்கு 8 ஆட்கள் வேணும், கூలి 600, சாப்பாடு உண்டு' },
+  { label: 'Kannada', text: 'ನಾಳೆ ಬೆಳಗ್ಗೆ 6 ಗಂಟೆಗೆ 5 ಜನ ನಾಟಿ ಕೆಲಸಕ್ಕೆ ಬೇಕು, ಕೂಲಿ 550, ಊಟ ಉಂಟು' },
+  { label: 'English', text: 'Need 5 people for sugarcane cutting in Chodavaram on Saturday for 2 days, 650 per day' },
+  { label: 'Telugu in English letters', text: 'ellundi sabbavaram lo kalupu pani ki naluguru kavali, rs 450' },
 ];
 
 export async function landing(ctx) {
@@ -48,10 +51,10 @@ export async function landing(ctx) {
       <div class="try" aria-labelledby="try-label">
         <h2 class="try-title"><label id="try-label" for="try-text">${t('Try it: type or speak a request')}</label></h2>
         <div class="try-input">
-          <textarea id="try-text" rows="3">${esc(EXAMPLES[0])}</textarea>
+          <textarea id="try-text" rows="3">${esc(EXAMPLES[0].text)}</textarea>
           <button class="btn btn-icon" data-act="tryMic" aria-label="${t('Speak')}">${icon('mic')}</button>
         </div>
-        <div class="try-examples">${EXAMPLES.map((e, i) => `<button data-act="tryExample" data-i="${i}">${[t('Telugu'), t('English'), t('Telugu in English letters')][i]}</button>`).join('')}</div>
+        <div class="try-examples">${EXAMPLES.map((e, i) => `<button data-act="tryExample" data-i="${i}">${t(e.label)}</button>`).join('')}</div>
         <div id="try-chit"></div>
         <div class="try-found" id="try-found" aria-live="polite"></div>
       </div>
@@ -70,7 +73,7 @@ export async function landing(ctx) {
     <section class="band" aria-labelledby="feat">
       <h2 id="feat">${t('Made for how fieldwork is actually hired')}</h2>
       <ul class="features">
-        <li>${icon('mic')}<div><b>${t('Speak in Telugu')}</b><p>${t('Voice and text in Telugu, English or Telugu typed in English letters. Every alert can be read aloud.')}</p></div></li>
+        <li>${icon('mic')}<div><b>${t('Speak in any Indian language')}</b><p>${t('Voice and text in Telugu, Hindi, Tamil, Kannada, English or Roman script. Every alert can be read aloud.')}</p></div></li>
         <li>${icon('sparkle')}<div><b>${t('Matching you can see into')}</b><p>${t('Every match shows why: distance, skills, free days, wage. No black box.')}</p></div></li>
         <li>${icon('rupee')}<div><b>${t('Fair wage guidance')}</b><p>${t('Farmers see the going rate nearby and how many skilled workers are free that day.')}</p></div></li>
         <li>${icon('radar')}<div><b>${t('No work left undone')}</b><p>${t('If a job is not filling or someone cancels, the search radius widens on its own.')}</p></div></li>
@@ -128,7 +131,10 @@ export async function landing(ctx) {
       };
       document.getElementById('try-chit').innerHTML = chit(job);
       const fields = [['work_type', t('Work')], ['workers_needed', t('Workers')], ['date', t('Date')], ['start_time', t('Time')], ['wage', t('Wage')], ['village', t('Village')]];
-      document.getElementById('try-found').innerHTML = `${fields.map(([k, label]) => `<span class="${r[k] != null ? '' : 'miss'}">${icon(r[k] != null ? 'check' : 'minus')}${label}</span>`).join('')}`;
+      const aiBadge = r.source === 'ai'
+        ? `<span class="try-ai-tag">${icon('sparkle')} ${t('Parsed by AI')}${r.model ? ` (${esc(r.model)})` : ''}</span>`
+        : `<span class="try-ai-tag offline">${icon('sparkle')} ${t('Parsed by offline rules')}</span>`;
+      document.getElementById('try-found').innerHTML = `${fields.map(([k, label]) => `<span class="${r[k] != null ? '' : 'miss'}">${icon(r[k] != null ? 'check' : 'minus')}${label}</span>`).join('')} ${aiBadge}`;
     } catch { /* keep last render */ }
   };
   const debounced = debounce(render, 350);
@@ -136,7 +142,7 @@ export async function landing(ctx) {
   render();
 
   ctx.actions = {
-    tryExample: (d) => { area.value = EXAMPLES[Number(d.i)]; render(); },
+    tryExample: (d) => { area.value = EXAMPLES[Number(d.i)].text; render(); },
     tryMic: () => listen((text) => { area.value = text; render(); }),
   };
 }

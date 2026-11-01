@@ -38,7 +38,7 @@ export async function farmerHome(ctx) {
       <div class="stack-lg">
         <section class="composer" aria-labelledby="cmp-h">
           <h2 id="cmp-h">${t('What work do you have?')}</h2>
-          <p>${t('Say it like you would to a neighbour. Telugu or English.')}</p>
+          <p>${t('Say it like you would to a neighbour. Any Indian language.')}</p>
           <label class="sr-only" for="cmp">${t('Describe the work')}</label>
           <textarea id="cmp" rows="2" placeholder="${t('Example: Tomorrow 6am, 8 people for paddy harvesting, 600 a day, lunch provided')}"></textarea>
           <div class="composer-actions">

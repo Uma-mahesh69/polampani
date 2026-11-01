@@ -62,15 +62,16 @@ An **online logistic-regression model** turns them into *P(accepts and shows up)
 
 ### 3. Multilingual job understanding (`src/nlp.js`)
 
-An offline rules engine understands Telugu script, Telugu typed in English letters, English and some Hindi:
+Understands **any Indian language** — Telugu, Hindi, Tamil, Kannada, Malayalam, Bengali, Marathi, Gujarati, Odia, Punjabi, Assamese, and English — in native script or romanised transliteration:
 
 ```
 రేపు ఉదయం 6 గంటలకి అనకాపల్లిలో వరి కోతలకు 8 మంది కావాలి, రెండు రోజులు, కూలి 600, భోజనం ఉంటుంది
+நாளை காலை 6 மணிக்கு நடவு வேலைக்கு 8 ஆட்கள் வேணும், கூலி 600, சாப்பாடு உண்டு
+kal subah 6 baje dhan katai ke liye 8 majdoor chahiye, 550 rupaye roz
 Need 5 people for sugarcane cutting in Chodavaram on Saturday for 2 days, 650 per day
-ellundi sabbavaram lo kalupu pani ki naluguru kavali, rs 450
 ```
 
-It extracts the work type, workers, wage, date, start time, number of days, village (with coordinates) and lunch, tea, transport or tools. Optionally set `LLM_BASE_URL` to any OpenAI-compatible **open-weights** model server such as [Ollama](https://ollama.com), and its answers are merged in for harder phrasing.
+It extracts the work type, workers, wage, date, start time, number of days, village (with coordinates) and lunch, tea, transport or tools. Connect **Google AI Studio (Gemini API free tier)** via `GEMINI_API_KEY` for state-of-the-art multilingual comprehension across all Indian languages. Alternatively, set `LLM_BASE_URL` to any OpenAI-compatible server such as [Ollama](https://ollama.com). An offline multilingual rules engine is built in as an instant fallback.
 
 ### 4. Decision support (`src/insights.js`)
 

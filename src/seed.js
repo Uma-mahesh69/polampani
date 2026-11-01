@@ -7,18 +7,24 @@
 // production the same loop runs on real accepts, declines and no-shows.
 require('./runtime');
 
-if (require.main === module && process.argv.includes('--reset')) {
+let resetRequested = require.main === module && process.argv.includes('--reset');
+if (resetRequested) {
   const fs = require('fs');
   const { DB_PATH } = require('./config');
+  let fileDeleted = false;
   try {
-    for (const f of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) fs.rmSync(f, { force: true });
-  } catch (e) {
-    console.error(`Could not delete ${DB_PATH} (${e.code}). Stop the running server first, then run npm run reset again.`);
-    process.exit(1);
-  }
+    for (const f of [DB_PATH, DB_PATH + '-wal', DB_PATH + '-shm']) fs.rmSync(f, { force: true });
+    fileDeleted = true;
+  } catch (e) { /* fall back to database table wipe */ }
 }
-
-const { get, run, tx, hydrateUser, kvSet } = require('./db');
+const { db, get, run, tx, hydrateUser, kvSet, SCHEMA } = require('./db');
+if (resetRequested) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
+  for (const t of tables) db.exec(`DROP TABLE IF EXISTS "${t.name}"`);
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec(SCHEMA);
+}
 const { VILLAGE_MAP, VILLAGES, CROP_CALENDAR, WORK_TYPE_MAP, addDays, endDateOf, todayStr, parseYmd } = require('./catalog');
 
 function mulberry32(seed) {

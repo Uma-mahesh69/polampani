@@ -177,4 +177,4 @@ const kvSet = (key, value) => run(
   'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value,
 );
 
-module.exports = { db, all, get, run, tx, hydrateUser, parseJSON, kvGet, kvSet, SCHEMA_VERSION };
+module.exports = { db, all, get, run, tx, hydrateUser, parseJSON, kvGet, kvSet, SCHEMA_VERSION, SCHEMA };

@@ -528,6 +528,9 @@ dialog.modal::backdrop { background: rgba(9, 30, 20, .5); }
 .try-found span { display: inline-flex; align-items: center; gap: 4px; }
 .try-found .ic { width: 14px; height: 14px; color: #8fd3a6; }
 .try-found .miss .ic { color: #6f8f7d; }
+.try-ai-tag { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; background: rgba(227,162,26,0.15); border: 1px solid rgba(227,162,26,0.4); color: #f2cb73; padding: 2px 10px; border-radius: 99px; font-weight: 500; font-size: .8rem; }
+.try-ai-tag.offline { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); color: #cfe3d6; }
+.try-ai-tag .ic { width: 13px; height: 13px; color: inherit; }
 
 .band { max-width: 1240px; margin: 0 auto; padding: 56px 32px; }
 .band h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); max-width: 26ch; }

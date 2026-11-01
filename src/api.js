@@ -74,7 +74,8 @@ router.get('/meta', h(() => ({
   demo_mode: config.DEMO_MODE,
   today: todayStr(),
   repo_url: config.REPO_URL,
-  llm: !!config.LLM_BASE_URL,
+  llm: !!(config.GEMINI_API_KEY || config.LLM_BASE_URL),
+  ai_model: config.GEMINI_API_KEY ? config.GEMINI_MODEL : (config.LLM_BASE_URL ? config.LLM_MODEL : null),
 })));
 
 router.get('/stats', h(() => ({
